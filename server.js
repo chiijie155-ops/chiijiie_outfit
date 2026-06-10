@@ -3,6 +3,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
 const bodyParser = require('body-parser');
@@ -116,6 +117,162 @@ app.get('/api/cities/:province', async (req, res) => {
   } catch (error) {
     console.error('Cities error:', error);
     res.status(500).json({ error: 'Failed to fetch cities' });
+  }
+});
+
+// Vendor partners list
+app.get('/api/vendors', async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+    const [results] = await connection.execute(
+      'SELECT id, name, platform, description, store_url AS storeUrl, logo, categories FROM vendor_partners WHERE active = TRUE ORDER BY name'
+    );
+    connection.release();
+    res.json(results);
+  } catch (error) {
+    console.error('Vendors error:', error);
+    res.status(500).json({ error: 'Failed to fetch vendor partners' });
+  }
+});
+
+app.post('/api/merchants/apply', async (req, res) => {
+  try {
+    const { name, platform, storeUrl, email, phone, categories, description } = req.body;
+    if (!name || !platform || !storeUrl || !email) {
+      return res.status(400).json({ error: 'Nama toko, platform, URL toko, dan email wajib diisi' });
+    }
+
+    const connection = await pool.getConnection();
+    await connection.execute(
+      'INSERT INTO merchant_applications (shop_name, platform, store_url, email, phone, categories, description) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [name, platform, storeUrl, email, phone, categories, description]
+    );
+    connection.release();
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Merchant application error:', error);
+    res.status(500).json({ error: 'Gagal menyimpan aplikasi merchant' });
+  }
+});
+
+async function fetchJson(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, { headers: { 'User-Agent': 'LUXEM Marketplace Search/1.0' } }, (res) => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(body));
+        } catch (err) {
+          reject(err);
+        }
+      });
+    }).on('error', reject);
+  });
+}
+
+async function fetchDummyMarketplaceSearch(query) {
+  try {
+    const external = await fetchJson(`https://dummyjson.com/products/search?q=${encodeURIComponent(query)}`);
+    if (!external || !Array.isArray(external.products)) return [];
+    return external.products.slice(0, 8).map(item => ({
+      id: 'market-' + item.id,
+      name: item.title,
+      brand: item.brand || item.category || 'Marketplace Partner',
+      price: item.price || 0,
+      img: item.thumbnail || '',
+      cat: item.category || 'Marketplace Partner',
+      source: 'Dummy Marketplace',
+      sourceUrl: `https://dummyjson.com/products/${item.id}`
+    }));
+  } catch (error) {
+    console.error('Dummy marketplace search error:', error);
+    return [];
+  }
+}
+
+async function fetchTokopediaSearch(query) {
+  if (!process.env.TOKOPEDIA_API_KEY) return [];
+  try {
+    const url = `https://api.tokopedia.com/v1/search?keyword=${encodeURIComponent(query)}`;
+    const external = await fetchJson(url);
+    if (!external || !Array.isArray(external.data)) return [];
+    return external.data.slice(0, 6).map(item => ({
+      id: 'tokopedia-' + item.id,
+      name: item.name || item.title,
+      brand: item.store_name || 'Tokopedia Partner',
+      price: item.price || 0,
+      img: item.image_url || '',
+      cat: item.category || 'Tokopedia',
+      source: 'Tokopedia',
+      sourceUrl: item.url || item.product_url || 'https://www.tokopedia.com'
+    }));
+  } catch (error) {
+    console.error('Tokopedia search error:', error);
+    return [];
+  }
+}
+
+async function fetchShopeeSearch(query) {
+  if (!process.env.SHOPEE_API_KEY) return [];
+  try {
+    const url = `https://partner.shopeemobile.com/api/v2/search_items?keyword=${encodeURIComponent(query)}`;
+    const external = await fetchJson(url);
+    if (!external || !Array.isArray(external.items)) return [];
+    return external.items.slice(0, 6).map(item => ({
+      id: 'shopee-' + item.itemid,
+      name: item.name || item.item_name,
+      brand: item.shop_name || 'Shopee Partner',
+      price: item.price || 0,
+      img: item.image || '',
+      cat: item.category || 'Shopee',
+      source: 'Shopee',
+      sourceUrl: item.url || 'https://shopee.co.id'
+    }));
+  } catch (error) {
+    console.error('Shopee search error:', error);
+    return [];
+  }
+}
+
+async function fetchMarketplaceSearch(query) {
+  const results = [];
+  const dummy = await fetchDummyMarketplaceSearch(query);
+  results.push(...dummy);
+
+  if (process.env.TOKOPEDIA_API_KEY) {
+    const tokopedia = await fetchTokopediaSearch(query);
+    results.push(...tokopedia);
+  }
+
+  if (process.env.SHOPEE_API_KEY) {
+    const shopee = await fetchShopeeSearch(query);
+    results.push(...shopee);
+  }
+
+  return results.slice(0, 20);
+}
+
+// Search local products + marketplace partners
+app.get('/api/search', async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    if (!q) return res.json({ local: [], marketplace: [] });
+
+    const like = '%' + q + '%';
+    const connection = await pool.getConnection();
+    const [localResults] = await connection.execute(
+      'SELECT id, name, brand, price, img, category AS cat FROM products WHERE name LIKE ? OR brand LIKE ? OR category LIKE ? LIMIT 20',
+      [like, like, like]
+    );
+    connection.release();
+
+    const marketplaceResults = await fetchMarketplaceSearch(q);
+    res.json({ local: localResults, marketplace: marketplaceResults });
+  } catch (error) {
+    console.error('Search API error:', error);
+    res.status(500).json({ error: 'Search failed' });
   }
 });
 

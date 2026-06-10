@@ -71,20 +71,13 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label>Kota *</label>
-                        <input type="text" id="city" placeholder="Jakarta" required>
+                        <input type="text" id="city" placeholder="Pilih provinsi terlebih dahulu" list="city-list" required>
+                        <datalist id="city-list"></datalist>
                     </div>
                     <div class="form-group">
                         <label>Provinsi *</label>
                         <select id="province" required>
                             <option value="">Pilih Provinsi</option>
-                            <option>DKI Jakarta</option>
-                            <option>Jawa Barat</option>
-                            <option>Jawa Tengah</option>
-                            <option>Jawa Timur</option>
-                            <option>Bali</option>
-                            <option>Sumatera Utara</option>
-                            <option>Sulawesi Selatan</option>
-                            <option>Kalimantan Timur</option>
                         </select>
                     </div>
                 </div>
@@ -95,36 +88,9 @@
 
                 <h3 style="margin: 2rem 0 1rem;">Pilih Layanan Pengiriman</h3>
                 <div class="shipping-options">
-                    <label class="shipping-option">
-                        <input type="radio" name="shipping" value="15000" checked>
-                        <div class="shipping-label">
-                            <div>
-                                <strong>JNE Reguler</strong>
-                                <p>Estimasi 3-5 hari kerja</p>
-                            </div>
-                            <span>Rp 15.000</span>
-                        </div>
-                    </label>
-                    <label class="shipping-option">
-                        <input type="radio" name="shipping" value="25000">
-                        <div class="shipping-label">
-                            <div>
-                                <strong>J&T Express</strong>
-                                <p>Estimasi 2-3 hari kerja</p>
-                            </div>
-                            <span>Rp 25.000</span>
-                        </div>
-                    </label>
-                    <label class="shipping-option">
-                        <input type="radio" name="shipping" value="50000">
-                        <div class="shipping-label">
-                            <div>
-                                <strong>SiCepat BEST</strong>
-                                <p>Estimasi 1-2 hari kerja</p>
-                            </div>
-                            <span>Rp 50.000</span>
-                        </div>
-                    </label>
+                    <div class="shipping-placeholder" style="padding:1.5rem; border:1px dashed #ccc; color:#555; text-align:center;">
+                        Pilih provinsi dan kota untuk melihat tarif ongkos kirim.
+                    </div>
                 </div>
 
                 <button type="button" class="btn btn-next" onclick="goToStep(2)">
@@ -232,7 +198,7 @@
                 </div>
                 <div class="summary-line">
                     <span>Ongkos Kirim</span>
-                    <span id="summary-shipping">Rp 15.000</span>
+                    <span id="summary-shipping">Rp 0</span>
                 </div>
                 <div class="summary-line discount-line" id="discount-line" style="display:none;">
                     <span>Diskon Promo</span>

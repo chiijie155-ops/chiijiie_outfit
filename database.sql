@@ -126,6 +126,42 @@ CREATE TABLE IF NOT EXISTS `shipping_costs` (
   UNIQUE KEY `uniq_province_city` (`province`, `city`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Table: vendor_partners
+CREATE TABLE IF NOT EXISTS `vendor_partners` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(255) NOT NULL,
+  `platform` VARCHAR(50) NOT NULL,
+  `description` TEXT DEFAULT NULL,
+  `store_url` VARCHAR(255) NOT NULL,
+  `logo` VARCHAR(255) DEFAULT NULL,
+  `categories` VARCHAR(255) DEFAULT NULL,
+  `active` BOOLEAN DEFAULT TRUE,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Seed vendor partner data
+INSERT INTO `vendor_partners` (`name`, `platform`, `description`, `store_url`, `logo`, `categories`) VALUES
+('Toko Fashion Nusantara', 'Tokopedia', 'Partner Tokopedia resmi untuk fashion premium lokal.', 'https://www.tokopedia.com/fashion-nusantara', 'https://via.placeholder.com/120x120?text=Tokopedia', 'Pakaian, Aksesoris'),
+('Shopee Streetwear', 'Shopee', 'Vendor Shopee dengan koleksi streetwear dan premium.', 'https://shopee.co.id/shopee-streetwear', 'https://via.placeholder.com/120x120?text=Shopee', 'Pakaian, Sneakers'),
+('Rumah Batik Partner', 'Tokopedia', 'Marketplace partner untuk batik dan fashion tradisional.', 'https://www.tokopedia.com/rumah-batik-partner', 'https://via.placeholder.com/120x120?text=Batik', 'Batik, Pakaian adat'),
+('Urban Closet', 'Shopee', 'Toko resmi lifestyle dan fashion urban dari Shopee.', 'https://shopee.co.id/urban-closet', 'https://via.placeholder.com/120x120?text=Urban', 'Apparel, Streetwear');
+
+-- Table: merchant_applications
+CREATE TABLE IF NOT EXISTS `merchant_applications` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `shop_name` VARCHAR(255) NOT NULL,
+  `platform` VARCHAR(100) NOT NULL,
+  `store_url` VARCHAR(255) NOT NULL,
+  `email` VARCHAR(255) NOT NULL,
+  `phone` VARCHAR(50) DEFAULT NULL,
+  `categories` VARCHAR(255) DEFAULT NULL,
+  `description` TEXT DEFAULT NULL,
+  `status` VARCHAR(50) NOT NULL DEFAULT 'pending',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Table: payment_transactions
 CREATE TABLE IF NOT EXISTS `payment_transactions` (
   `id` VARCHAR(64) NOT NULL,

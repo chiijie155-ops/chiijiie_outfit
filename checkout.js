@@ -37,6 +37,7 @@ async function loadProvinces() {
         const provinces = await response.json();
         
         const provinceSelect = document.getElementById('province');
+        provinceSelect.innerHTML = '<option value="">Pilih Provinsi</option>';
         provinces.forEach(prov => {
             const option = document.createElement('option');
             option.value = prov;
@@ -51,28 +52,33 @@ async function loadProvinces() {
 
 // --- Load cities for selected province ---
 async function loadCities(province) {
-    if (!province) return;
-    
+    const cityInput = document.getElementById('city');
+    cityInput.value = '';
+    cityInput.placeholder = 'Pilih kota dari daftar';
+    cityInput.removeAttribute('list');
+
+    if (!province) {
+        cityInput.placeholder = 'Pilih provinsi terlebih dahulu';
+        renderShippingOptions();
+        return;
+    }
+
     try {
         const response = await fetch(`${API_BASE}/api/cities/${encodeURIComponent(province)}`);
         const cities = await response.json();
-        
-        const cityInput = document.getElementById('city');
-        cityInput.innerHTML = '';
-        
-        // Add datalist for autocomplete
+
         let datalist = document.getElementById('city-list');
-        if (datalist) datalist.remove();
-        
-        datalist = document.createElement('datalist');
-        datalist.id = 'city-list';
+        if (!datalist) {
+            datalist = document.createElement('datalist');
+            datalist.id = 'city-list';
+            document.body.appendChild(datalist);
+        }
+        datalist.innerHTML = '';
         cities.forEach(city => {
             const option = document.createElement('option');
             option.value = city;
             datalist.appendChild(option);
         });
-        document.body.appendChild(datalist);
-        
         cityInput.setAttribute('list', 'city-list');
     } catch (error) {
         console.error('Error loading cities:', error);
@@ -82,18 +88,26 @@ async function loadCities(province) {
 
 // --- Load shipping costs for province/city ---
 async function loadShippingCosts(province, city) {
-    if (!province || !city) return;
+    shippingCosts = {};
+    if (!province || !city) {
+        renderShippingOptions();
+        updateTotals();
+        return;
+    }
     
     try {
         const response = await fetch(`${API_BASE}/api/shipping-costs?province=${encodeURIComponent(province)}&city=${encodeURIComponent(city)}`);
         const costs = await response.json();
         
-        if (costs.length > 0) {
+        if (Array.isArray(costs) && costs.length > 0) {
             shippingCosts = costs[0];
             renderShippingOptions();
             updateTotals();
         } else {
-            showToast('Jenis pengiriman tidak tersedia untuk area ini', 'error');
+            shippingCosts = {};
+            renderShippingOptions();
+            updateTotals();
+            showToast('Ongkos kirim belum tersedia untuk kota/provinsi ini', 'error');
         }
     } catch (error) {
         console.error('Error loading shipping costs:', error);
@@ -104,8 +118,17 @@ async function loadShippingCosts(province, city) {
 // --- Render shipping options based on costs ---
 function renderShippingOptions() {
     const container = document.getElementById('shipping-options');
-    if (!container || !shippingCosts.regular_cost) return;
-    
+    if (!container) return;
+
+    if (!shippingCosts || !shippingCosts.regular_cost) {
+        container.innerHTML = `
+        <div class="shipping-placeholder" style="padding:1.5rem; border:1px dashed #ccc; color:#555; text-align:center;">
+            Pilih provinsi dan kota untuk melihat tarif ongkos kirim.
+        </div>`;
+        currentShippingCost = 0;
+        return;
+    }
+
     container.innerHTML = `
         <label class="shipping-option">
             <input type="radio" name="shipping" value="${shippingCosts.regular_cost}" data-type="reguler" checked>
@@ -130,7 +153,6 @@ function renderShippingOptions() {
         </label>
     `;
     
-    // Re-bind shipping change events
     document.querySelectorAll('input[name="shipping"]').forEach(radio => {
         radio.addEventListener('change', updateTotals);
     });
@@ -190,11 +212,19 @@ function updateTotals(subtotal) {
 function bindEvents() {
     // Province change
     document.getElementById('province').addEventListener('change', (e) => {
+        shippingCosts = {};
+        renderShippingOptions();
         loadCities(e.target.value);
     });
     
     // City change
-    document.getElementById('city').addEventListener('blur', (e) => {
+    const cityInput = document.getElementById('city');
+    cityInput.addEventListener('blur', (e) => {
+        if (e.target.value) {
+            loadShippingCosts(document.getElementById('province').value, e.target.value);
+        }
+    });
+    cityInput.addEventListener('change', (e) => {
         if (e.target.value) {
             loadShippingCosts(document.getElementById('province').value, e.target.value);
         }
@@ -253,6 +283,10 @@ function validateStep(step) {
             showToast('Format email tidak valid', 'error');
             return false;
         }
+        if (!shippingCosts || !shippingCosts.regular_cost) {
+            showToast('Pilih provinsi dan kota untuk memuat ongkir regional', 'error');
+            return false;
+        }
     }
     return true;
 }
@@ -270,6 +304,7 @@ function renderReview() {
 
     const shippingOption = document.querySelector('input[name="shipping"]:checked');
     const shippingLabel = shippingOption ? shippingOption.closest('label')?.querySelector('strong')?.textContent || 'Pengiriman' : 'Pengiriman';
+    const shippingCost = getShippingCost();
 
     document.getElementById('order-review').innerHTML = `
         <div class="review-section">
@@ -281,7 +316,7 @@ function renderReview() {
         </div>
         <div class="review-section">
             <h4>Layanan Pengiriman</h4>
-            <p>${shippingLabel}</p>
+            <p>${shippingLabel} - Rp ${shippingCost.toLocaleString('id-ID')}</p>
         </div>
         <div class="review-section">
             <h4>Metode Pembayaran</h4>

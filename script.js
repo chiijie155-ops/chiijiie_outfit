@@ -49,6 +49,7 @@ var cart        = JSON.parse(localStorage.getItem('cart'))     || [];
 var wishlist    = JSON.parse(localStorage.getItem('wishlist')) || [];
 var currentCat  = 'pria';
 var currentFilter = 'all';
+var API_BASE = window.location.origin;
 
 // ═══════════════════════════════════
 // 3. HELPERS
@@ -329,52 +330,91 @@ function bindSearch() {
 }
 
 function searchProducts() {
-    var q = el('search-input').value.trim().toLowerCase();
+    var q = el('search-input').value.trim();
     var resultsBox = el('search-results');
     if (q.length === 0) {
         resultsBox.innerHTML = '<p class="search-no-result">Ketik nama produk atau brand untuk mencari.</p>';
         return;
     }
 
-    var flat = [];
-    var keys = Object.keys(PRODUCTS);
-    for (var k = 0; k < keys.length; k++) {
-        var catKey = keys[k];
-        var list   = PRODUCTS[catKey];
-        for (var j = 0; j < list.length; j++) {
-            flat.push({ catKey: catKey, p: list[j] });
-        }
-    }
+    fetch(API_BASE + '/api/search?q=' + encodeURIComponent(q))
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            var cartHits = cart.filter(function(item) {
+                return item.name.toLowerCase().indexOf(q.toLowerCase()) >= 0
+                    || item.brand.toLowerCase().indexOf(q.toLowerCase()) >= 0;
+            });
 
-    var hits = flat.filter(function(item) {
-        return item.p.name.toLowerCase().indexOf(q) >= 0
-            || item.p.brand.toLowerCase().indexOf(q) >= 0
-            || item.catKey.toLowerCase().indexOf(q) >= 0;
-    });
+            var localHits = data.local || [];
+            var marketplaceHits = data.marketplace || [];
 
-    if (hits.length === 0) {
-        resultsBox.innerHTML = '<p class="search-no-result">Tidak ada produk ditemukan.</p>';
-        return;
-    }
+            if (cartHits.length === 0 && localHits.length === 0 && marketplaceHits.length === 0) {
+                resultsBox.innerHTML = '<p class="search-no-result">Tidak ada produk ditemukan.</p>';
+                return;
+            }
 
-    var rhtml = '';
-    hits.slice(0, 8).forEach(function(item) {
-        var p = item.p;
-        rhtml += '<div class="search-result-item" onclick="handleSearchClick(\'' + p.id + '\',\'' + item.catKey + '\')">'
-            + '<img src="' + p.img + '" alt="' + p.name + '">'
-            + '<div>'
-            + '<p class="sr-brand">' + p.brand + '</p>'
-            + '<p class="sr-name">' + p.name + '</p>'
-            + '<p class="sr-price">Rp ' + p.price.toLocaleString('id-ID') + ' • ' + item.catKey.toUpperCase() + '</p>'
-            + '</div></div>';
-    });
-    resultsBox.innerHTML = rhtml;
+            var rhtml = '';
+            if (cartHits.length > 0) {
+                rhtml += '<div class="search-group-title">Sudah di Keranjang</div>';
+                cartHits.forEach(function(item) {
+                    rhtml += renderSearchResultItem({
+                        id: item.id,
+                        name: item.name,
+                        brand: item.brand,
+                        price: item.price,
+                        img: item.img,
+                        cat: 'Keranjang',
+                        source: 'local',
+                        inCart: true
+                    });
+                });
+            }
+            if (localHits.length > 0) {
+                rhtml += '<div class="search-group-title">Produk LUXE.M</div>';
+                localHits.slice(0, 10).forEach(function(item) {
+                    rhtml += renderSearchResultItem(Object.assign({}, item, { source: 'local', inCart: cart.some(function(c) { return c.id === item.id; }) }));
+                });
+            }
+            if (marketplaceHits.length > 0) {
+                rhtml += '<div class="search-group-title">Marketplace Partner</div>';
+                marketplaceHits.slice(0, 10).forEach(function(item) {
+                    rhtml += renderSearchResultItem(item);
+                });
+            }
+            resultsBox.innerHTML = rhtml;
+        })
+        .catch(function(err) {
+            console.error('Search fetch error:', err);
+            resultsBox.innerHTML = '<p class="search-no-result">Gagal memuat hasil pencarian.</p>';
+        });
 }
 
-function handleSearchClick(productId, cat) {
+function renderSearchResultItem(item) {
+    var badgeText = item.inCart ? '<span class="search-badge">Di Keranjang</span>' : '';
+    var extraLabel = item.source === 'Marketplace Partner' ? '<span class="search-badge">' + item.source + '</span>' : '';
+    var tag = item.cat ? item.cat.toUpperCase() : '';
+    var label = item.source === 'Marketplace Partner' ? item.brand : item.brand;
+    var url = item.source === 'Marketplace Partner' ? item.sourceUrl : '#';
+    var onClick = item.source === 'Marketplace Partner' ? 'window.open(\'' + url + '\', \"_blank\")' : 'handleSearchResultClick(\'' + item.id + '\', \'' + (item.cat || 'pria') + '\')';
+
+    return '<div class="search-result-item" onclick="' + onClick + '">'
+        + '<img src="' + (item.img || DEFAULT_NO_IMAGE) + '" alt="' + item.name + '">'
+        + '<div>'
+        + '<p class="sr-brand">' + label + (extraLabel ? ' • ' + extraLabel : '') + '</p>'
+        + '<p class="sr-name">' + item.name + '</p>'
+        + '<p class="sr-price">' + formatPrice(item.price) + ' ' + (tag ? '• ' + tag : '') + '</p>'
+        + badgeText
+        + '</div></div>';
+}
+
+function formatPrice(value) {
+    return 'Rp ' + (parseInt(value, 10) || 0).toLocaleString('id-ID');
+}
+
+function handleSearchResultClick(productId, cat) {
     closeSearch();
     el('search-input').value = '';
-    switchCategory(cat);
+    switchCategory(cat.toLowerCase());
     setTimeout(function() {
         var card = document.querySelector('[data-id="' + productId + '"]');
         if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
