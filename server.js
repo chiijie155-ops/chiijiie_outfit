@@ -74,6 +74,9 @@ app.get('/api/shipping-costs', async (req, res) => {
     } else if (province) {
       query += ' AND province = ?';
       params.push(province);
+    } else if (city) {
+      query += ' AND city = ?';
+      params.push(city);
     }
 
     const [results] = await connection.execute(query, params);
@@ -278,25 +281,38 @@ app.get('/api/search', async (req, res) => {
 
 // =============== PAYMENT API ===============
 
+// Get payment configuration for client integration
+app.get('/api/payment/config', (req, res) => {
+  const snapUrl = process.env.NODE_ENV === 'production'
+    ? 'https://app.midtrans.com/snap/snap.js'
+    : 'https://app.sandbox.midtrans.com/snap/snap.js';
+
+  res.json({
+    clientKey: process.env.MIDTRANS_CLIENT_KEY || 'YOUR_CLIENT_KEY',
+    snapUrl: process.env.MIDTRANS_SNAP_URL || snapUrl
+  });
+});
+
 // Create payment transaction & get Snap token
 app.post('/api/payment/create-token', async (req, res) => {
   try {
-    const { orderId, amount, customerEmail, customerName, customerPhone } = req.body;
+    const { orderId, amount, customerEmail, customerName, customerPhone, paymentMethod } = req.body;
 
     if (!orderId || !amount) {
       return res.status(400).json({ error: 'Order ID and amount are required' });
     }
 
+    const selectedMethod = paymentMethod || 'bank_transfer_bca';
     const transactionId = 'TRX-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
     const connection = await pool.getConnection();
 
     // Create transaction record
     await connection.execute(
       'INSERT INTO payment_transactions (id, order_id, amount, payment_method, status) VALUES (?, ?, ?, ?, ?)',
-      [transactionId, orderId, amount, 'midtrans', 'pending']
+      [transactionId, orderId, amount, selectedMethod, 'pending']
     );
 
-    // Create Midtrans transaction
+    // Build Midtrans Snap parameters for the selected method
     const parameter = {
       transaction_details: {
         order_id: orderId,
@@ -314,6 +330,38 @@ app.post('/api/payment/create-token', async (req, res) => {
         unfinish: process.env.PAYMENT_REDIRECT_URL || 'http://localhost:3000/payment-status.html?status=unfinish'
       }
     };
+
+    let enabledPayments = ['bank_transfer', 'gopay', 'qris', 'ovo', 'dana', 'shopeepay'];
+    const paymentOverrides = {};
+
+    switch (selectedMethod) {
+      case 'bank_transfer_bca':
+        enabledPayments = ['bank_transfer'];
+        paymentOverrides.bank_transfer = { bank: 'bca' };
+        break;
+      case 'bank_transfer_mandiri':
+        enabledPayments = ['bank_transfer'];
+        paymentOverrides.bank_transfer = { bank: 'mandiri' };
+        break;
+      case 'gopay':
+        enabledPayments = ['gopay'];
+        break;
+      case 'ovo':
+        enabledPayments = ['ovo'];
+        break;
+      case 'dana':
+        enabledPayments = ['dana'];
+        break;
+      case 'qris':
+        enabledPayments = ['qris'];
+        break;
+      default:
+        enabledPayments = ['bank_transfer', 'gopay', 'qris', 'ovo', 'dana', 'shopeepay'];
+        break;
+    }
+
+    parameter.enabled_payments = enabledPayments;
+    Object.assign(parameter, paymentOverrides);
 
     // Get Snap token from Midtrans
     const snapToken = await snapClient.createTransaction(parameter);
@@ -405,10 +453,10 @@ app.post('/api/orders/create', async (req, res) => {
   try {
     const {
       firstName, lastName, email, phone, address, city, province,
-      shippingMethod, cart, subtotal, shippingCost, discount
+      shippingMethod, paymentMethod, cart, subtotal, shippingCost, discount
     } = req.body;
 
-    if (!firstName || !email || !address || !city || !province || !cart || cart.length === 0) {
+    if (!firstName || !email || !address || !city || !province || !cart || cart.length === 0 || !paymentMethod) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -439,7 +487,7 @@ app.post('/api/orders/create', async (req, res) => {
 
       await connection.execute(
         'INSERT INTO orders (id, customer_id, shipping_method, payment_method, subtotal, shipping_cost, discount, total, status_index) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [orderId, customerId, shippingMethod, 'pending', subtotal, shippingCost, discount, total, 0]
+        [orderId, customerId, shippingMethod, paymentMethod, subtotal, shippingCost, discount, total, 0]
       );
 
       // Insert order items

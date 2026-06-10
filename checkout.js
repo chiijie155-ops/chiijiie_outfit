@@ -9,6 +9,9 @@ let discount = 0;
 let currentStep = 1;
 let shippingCosts = {};
 let currentShippingCost = 0;
+let midtransClientKey = '';
+let snapScriptUrl = '';
+let snapLoaded = false;
 
 const API_BASE = window.location.origin;
 const ORDER_HISTORY_KEY = 'orderHistory';
@@ -23,8 +26,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
-    // Load provinces
+    // Load provinces and payment configuration
     await loadProvinces();
+    await loadPaymentConfig();
+    await loadSnapLibrary();
+    updatePaymentDetail();
     
     renderSummary();
     bindEvents();
@@ -113,6 +119,86 @@ async function loadShippingCosts(province, city) {
         console.error('Error loading shipping costs:', error);
         showToast('Gagal memuat biaya pengiriman', 'error');
     }
+}
+
+// --- Load Midtrans payment configuration ---
+async function loadPaymentConfig() {
+    try {
+        const response = await fetch(`${API_BASE}/api/payment/config`);
+        const config = await response.json();
+        if (config && config.clientKey) {
+            midtransClientKey = config.clientKey;
+            snapScriptUrl = config.snapUrl || 'https://app.sandbox.midtrans.com/snap/snap.js';
+        }
+    } catch (error) {
+        console.error('Error loading payment configuration:', error);
+        showToast('Gagal memuat konfigurasi pembayaran', 'error');
+    }
+}
+
+async function loadSnapLibrary() {
+    if (!midtransClientKey || snapLoaded) return;
+
+    return new Promise((resolve, reject) => {
+        const existing = document.querySelector('script[data-midtrans-snap]');
+        if (existing) {
+            snapLoaded = true;
+            return resolve();
+        }
+
+        const script = document.createElement('script');
+        script.src = snapScriptUrl;
+        script.dataset.midtransSnap = 'true';
+        script.dataset.clientKey = midtransClientKey;
+        script.async = true;
+        script.onload = () => {
+            snapLoaded = true;
+            resolve();
+        };
+        script.onerror = () => reject(new Error('Gagal memuat library pembayaran Midtrans'));
+        document.head.appendChild(script);
+    });
+}
+
+function updatePaymentDetail() {
+    const selected = document.querySelector('input[name="payment"]:checked');
+    const paymentDetail = document.getElementById('payment-detail');
+    if (!paymentDetail) return;
+
+    const method = selected ? selected.value : 'bank_transfer_bca';
+    const labels = {
+        bank_transfer_bca: {
+            title: 'Transfer Bank BCA',
+            description: 'Gunakan virtual account BCA di halaman pembayaran. Transfer otomatis tercatat segera setelah sukses.'
+        },
+        bank_transfer_mandiri: {
+            title: 'Transfer Bank Mandiri',
+            description: 'Gunakan virtual account Mandiri. Ikuti instruksi pada halaman pembayaran untuk menyelesaikan transfer.'
+        },
+        gopay: {
+            title: 'GoPay',
+            description: 'Bayar dengan GoPay. Pastikan saldo tersedia di aplikasi GoPay Anda.'
+        },
+        ovo: {
+            title: 'OVO',
+            description: 'Bayar dengan OVO. Ikuti instruksi pada halaman pembayaran Midtrans untuk menyelesaikan transaksi.'
+        },
+        dana: {
+            title: 'DANA',
+            description: 'Bayar dengan DANA. Pastikan akun DANA sudah terhubung dan saldo cukup.'
+        },
+        qris: {
+            title: 'QRIS',
+            description: 'Bayar dengan QRIS. Scan QR code yang ditampilkan oleh Midtrans untuk menyelesaikan pembayaran.'
+        }
+    };
+
+    const selectedLabel = labels[method] || labels.bank_transfer_bca;
+    paymentDetail.innerHTML = `
+        <p><strong>${selectedLabel.title}</strong></p>
+        <p>${selectedLabel.description}</p>
+        <p class="note">⚠️ Pastikan memilih metode pembayaran yang sesuai saat menyelesaikan pesanan.</p>
+    `;
 }
 
 // --- Render shipping options based on costs ---
@@ -235,6 +321,14 @@ function bindEvents() {
         radio.addEventListener('change', updateTotals);
     });
 
+    // Payment method selection
+    document.querySelectorAll('input[name="payment"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            updatePaymentDetail();
+            renderSummary();
+        });
+    });
+
     // Voucher
     document.getElementById('apply-voucher').addEventListener('click', applyVoucher);
     document.getElementById('voucher-input').addEventListener('keypress', (e) => {
@@ -306,6 +400,9 @@ function renderReview() {
     const shippingLabel = shippingOption ? shippingOption.closest('label')?.querySelector('strong')?.textContent || 'Pengiriman' : 'Pengiriman';
     const shippingCost = getShippingCost();
 
+    const paymentOption = document.querySelector('input[name="payment"]:checked');
+    const paymentMethodLabel = paymentOption ? paymentOption.closest('label')?.querySelector('span')?.textContent : 'Metode Pembayaran';
+
     document.getElementById('order-review').innerHTML = `
         <div class="review-section">
             <h4>Dikirim Ke</h4>
@@ -320,7 +417,7 @@ function renderReview() {
         </div>
         <div class="review-section">
             <h4>Metode Pembayaran</h4>
-            <p>Midtrans Payment Gateway</p>
+            <p>${paymentMethodLabel}</p>
         </div>
     `;
 }
@@ -374,6 +471,7 @@ async function placeOrder() {
         const province = document.getElementById('province').value;
         const postal = document.getElementById('postal').value;
         const shippingMethod = document.querySelector('input[name="shipping"]:checked')?.dataset?.type || 'reguler';
+        const paymentMethod = document.querySelector('input[name="payment"]:checked')?.value || 'bank_transfer_bca';
 
         const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
         const shippingCost = getShippingCost();
@@ -393,6 +491,7 @@ async function placeOrder() {
                 province,
                 postal,
                 shippingMethod,
+                paymentMethod,
                 cart,
                 subtotal,
                 shippingCost,
@@ -408,6 +507,10 @@ async function placeOrder() {
         const orderId = orderData.orderId;
 
         // Step 2: Create payment token
+        if (!window.snap && !snapLoaded) {
+            await loadSnapLibrary();
+        }
+
         const paymentResponse = await fetch(`${API_BASE}/api/payment/create-token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -416,7 +519,8 @@ async function placeOrder() {
                 amount: total,
                 customerEmail: email,
                 customerName: `${firstName} ${lastName}`,
-                customerPhone: phone
+                customerPhone: phone,
+                paymentMethod
             })
         });
 

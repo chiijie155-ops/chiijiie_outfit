@@ -103,14 +103,14 @@
                 <h2 class="step-title">Metode Pembayaran</h2>
                 <div class="payment-methods">
                     <label class="payment-option">
-                        <input type="radio" name="payment" value="bca" checked>
+                        <input type="radio" name="payment" value="bank_transfer_bca" checked>
                         <div class="payment-label">
                             <i class="fa-solid fa-building-columns"></i>
                             <span>Transfer Bank BCA</span>
                         </div>
                     </label>
                     <label class="payment-option">
-                        <input type="radio" name="payment" value="mandiri">
+                        <input type="radio" name="payment" value="bank_transfer_mandiri">
                         <div class="payment-label">
                             <i class="fa-solid fa-building-columns"></i>
                             <span>Transfer Bank Mandiri</span>
@@ -120,7 +120,21 @@
                         <input type="radio" name="payment" value="gopay">
                         <div class="payment-label">
                             <i class="fa-brands fa-google-pay" style="font-size: 1.5rem;"></i>
-                            <span>GoPay / OVO</span>
+                            <span>GoPay</span>
+                        </div>
+                    </label>
+                    <label class="payment-option">
+                        <input type="radio" name="payment" value="ovo">
+                        <div class="payment-label">
+                            <i class="fa-brands fa-cc-visa" style="font-size: 1.5rem;"></i>
+                            <span>OVO</span>
+                        </div>
+                    </label>
+                    <label class="payment-option">
+                        <input type="radio" name="payment" value="dana">
+                        <div class="payment-label">
+                            <i class="fa-solid fa-wallet"></i>
+                            <span>DANA</span>
                         </div>
                     </label>
                     <label class="payment-option">
@@ -130,27 +144,10 @@
                             <span>QRIS</span>
                         </div>
                     </label>
-                    <label class="payment-option">
-                        <input type="radio" name="payment" value="cod">
-                        <div class="payment-label">
-                            <i class="fa-solid fa-money-bill-wave"></i>
-                            <span>Bayar di Tempat (COD)</span>
-                        </div>
-                    </label>
                 </div>
 
-                <!-- Bank Transfer Detail (show by default) -->
-                <div id="bank-detail" class="payment-detail">
-                    <p>Transfer ke rekening berikut:</p>
-                    <div class="bank-info">
-                        <span>No. Rekening</span>
-                        <strong>1234-5678-9012</strong>
-                    </div>
-                    <div class="bank-info">
-                        <span>Atas Nama</span>
-                        <strong>PT LUXE.M INDONESIA</strong>
-                    </div>
-                    <p class="note">⚠️ Pembayaran dikonfirmasi dalam 1×24 jam setelah transfer.</p>
+                <div id="payment-detail" class="payment-detail">
+                    <p>Pilih metode pembayaran untuk melihat instruksi singkat.</p>
                 </div>
 
                 <div class="form-group" style="margin-top: 2rem;">
