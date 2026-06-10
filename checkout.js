@@ -38,13 +38,25 @@ function getFallbackProvinces() {
 }
 
 function getFallbackCities(province) {
-    return SHIPPING_FALLBACK.filter(item => item.province === province).map(item => item.city).sort();
+    return SHIPPING_FALLBACK.filter(item => item.province.toLowerCase() === province.toLowerCase()).map(item => item.city).sort();
 }
 
 function getFallbackShippingCosts(province, city) {
+    const provinceLower = province.toLowerCase();
+    const cityLower = city.toLowerCase();
     return SHIPPING_FALLBACK.filter(item => {
-        return item.province === province && item.city === city;
+        return item.province.toLowerCase() === provinceLower && item.city.toLowerCase() === cityLower;
     });
+}
+
+function getCityListValues() {
+    const datalist = document.getElementById('city-list');
+    return datalist ? Array.from(datalist.options).map(opt => opt.value.toLowerCase()) : [];
+}
+
+function isValidCity(city) {
+    if (!city) return false;
+    return getCityListValues().includes(city.trim().toLowerCase());
 }
 
 // --- Initialize ---
@@ -109,9 +121,14 @@ async function loadCities(province) {
 
     if (!province) {
         cityInput.placeholder = 'Pilih provinsi terlebih dahulu';
+        cityInput.disabled = true;
+        cityInput.removeAttribute('list');
         renderShippingOptions();
         return;
     }
+
+    cityInput.disabled = false;
+    cityInput.placeholder = 'Ketik atau pilih kota';
 
     try {
         const response = await fetch(`${API_BASE}/api/cities/${encodeURIComponent(province)}`);
@@ -135,6 +152,9 @@ async function loadCities(province) {
             datalist.appendChild(option);
         });
         cityInput.setAttribute('list', 'city-list');
+        if (cities.length === 0) {
+            showToast(`Belum ada data kota untuk provinsi ${province}`, 'error');
+        }
     } catch (error) {
         console.error('Error loading cities:', error);
         const cities = getFallbackCities(province);
@@ -151,19 +171,31 @@ async function loadCities(province) {
             datalist.appendChild(option);
         });
         cityInput.setAttribute('list', 'city-list');
-        showToast('Menggunakan daftar kota cadangan', 'warning');
+        if (cities.length === 0) {
+            showToast(`Belum ada daftar kota untuk provinsi ${province}`, 'warning');
+        } else {
+            showToast('Menggunakan daftar kota cadangan', 'warning');
+        }
     }
 }
 
 // --- Load shipping costs for province/city ---
 async function loadShippingCosts(province, city) {
     shippingCosts = {};
-    if (!province || !city) {
+    const trimmedCity = city ? city.trim() : '';
+    if (!province || !trimmedCity) {
         renderShippingOptions();
         updateTotals();
         return;
     }
-    
+
+    if (!isValidCity(trimmedCity)) {
+        renderShippingOptions();
+        updateTotals();
+        showToast('Pilih kota yang valid dari daftar kota', 'error');
+        return;
+    }
+
     try {
         const response = await fetch(`${API_BASE}/api/shipping-costs?province=${encodeURIComponent(province)}&city=${encodeURIComponent(city)}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -379,8 +411,16 @@ function bindEvents() {
     // City change
     const cityInput = document.getElementById('city');
     const loadCityShipping = (value) => {
-        if (value) {
-            loadShippingCosts(document.getElementById('province').value, value);
+        const trimmedCity = value.trim();
+        if (!trimmedCity) {
+            shippingCosts = {};
+            renderShippingOptions();
+            updateTotals();
+            return;
+        }
+
+        if (isValidCity(trimmedCity)) {
+            loadShippingCosts(document.getElementById('province').value, trimmedCity);
         }
     };
 
