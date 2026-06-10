@@ -305,16 +305,15 @@ function bindEvents() {
     
     // City change
     const cityInput = document.getElementById('city');
-    cityInput.addEventListener('blur', (e) => {
-        if (e.target.value) {
-            loadShippingCosts(document.getElementById('province').value, e.target.value);
+    const loadCityShipping = (value) => {
+        if (value) {
+            loadShippingCosts(document.getElementById('province').value, value);
         }
-    });
-    cityInput.addEventListener('change', (e) => {
-        if (e.target.value) {
-            loadShippingCosts(document.getElementById('province').value, e.target.value);
-        }
-    });
+    };
+
+    cityInput.addEventListener('blur', (e) => loadCityShipping(e.target.value));
+    cityInput.addEventListener('change', (e) => loadCityShipping(e.target.value));
+    cityInput.addEventListener('input', (e) => loadCityShipping(e.target.value));
 
     // Update shipping cost when option changes
     document.querySelectorAll('input[name="shipping"]').forEach(radio => {
