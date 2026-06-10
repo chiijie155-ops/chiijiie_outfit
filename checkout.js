@@ -18,6 +18,35 @@ const API_BASE = (window.location.origin && window.location.origin !== 'null')
     : 'http://localhost:3000';
 const ORDER_HISTORY_KEY = 'orderHistory';
 
+const SHIPPING_FALLBACK = [
+    { province: 'DKI Jakarta', city: 'Jakarta Pusat', regular_cost: 15000, express_cost: 25000, overnight_cost: 40000 },
+    { province: 'DKI Jakarta', city: 'Jakarta Utara', regular_cost: 15000, express_cost: 25000, overnight_cost: 40000 },
+    { province: 'DKI Jakarta', city: 'Jakarta Timur', regular_cost: 15000, express_cost: 25000, overnight_cost: 40000 },
+    { province: 'DKI Jakarta', city: 'Jakarta Barat', regular_cost: 15000, express_cost: 25000, overnight_cost: 40000 },
+    { province: 'DKI Jakarta', city: 'Jakarta Selatan', regular_cost: 15000, express_cost: 25000, overnight_cost: 40000 },
+    { province: 'Jawa Barat', city: 'Bandung', regular_cost: 20000, express_cost: 30000, overnight_cost: 45000 },
+    { province: 'Jawa Barat', city: 'Bekasi', regular_cost: 18000, express_cost: 28000, overnight_cost: 42000 },
+    { province: 'Jawa Barat', city: 'Bogor', regular_cost: 18000, express_cost: 28000, overnight_cost: 42000 },
+    { province: 'Jawa Barat', city: 'Depok', regular_cost: 18000, express_cost: 28000, overnight_cost: 42000 },
+    { province: 'Jawa Barat', city: 'Tangerang', regular_cost: 18000, express_cost: 28000, overnight_cost: 42000 },
+    { province: 'Jawa Tengah', city: 'Semarang', regular_cost: 25000, express_cost: 35000, overnight_cost: 50000 },
+    { province: 'Jawa Tengah', city: 'Yogyakarta', regular_cost: 28000, express_cost: 38000, overnight_cost: 53000 }
+];
+
+function getFallbackProvinces() {
+    return Array.from(new Set(SHIPPING_FALLBACK.map(item => item.province))).sort();
+}
+
+function getFallbackCities(province) {
+    return SHIPPING_FALLBACK.filter(item => item.province === province).map(item => item.city).sort();
+}
+
+function getFallbackShippingCosts(province, city) {
+    return SHIPPING_FALLBACK.filter(item => {
+        return item.province === province && item.city === city;
+    });
+}
+
 // --- Initialize ---
 document.addEventListener('DOMContentLoaded', async () => {
     if (cart.length === 0) {
@@ -40,12 +69,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // --- Load provinces from API ---
 async function loadProvinces() {
+    const provinceSelect = document.getElementById('province');
+    provinceSelect.innerHTML = '<option value="">Pilih Provinsi</option>';
+
     try {
         const response = await fetch(`${API_BASE}/api/provinces`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
         const provinces = await response.json();
-        
-        const provinceSelect = document.getElementById('province');
-        provinceSelect.innerHTML = '<option value="">Pilih Provinsi</option>';
+        if (!Array.isArray(provinces) || provinces.length === 0) {
+            throw new Error('No provinces returned');
+        }
+
         provinces.forEach(prov => {
             const option = document.createElement('option');
             option.value = prov;
@@ -54,7 +89,14 @@ async function loadProvinces() {
         });
     } catch (error) {
         console.error('Error loading provinces:', error);
-        showToast('Gagal memuat data provinsi', 'error');
+        const provinces = getFallbackProvinces();
+        provinces.forEach(prov => {
+            const option = document.createElement('option');
+            option.value = prov;
+            option.textContent = prov;
+            provinceSelect.appendChild(option);
+        });
+        showToast('Menggunakan daftar provinsi cadangan', 'warning');
     }
 }
 
@@ -73,7 +115,12 @@ async function loadCities(province) {
 
     try {
         const response = await fetch(`${API_BASE}/api/cities/${encodeURIComponent(province)}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
         const cities = await response.json();
+        if (!Array.isArray(cities) || cities.length === 0) {
+            throw new Error('No cities returned');
+        }
 
         let datalist = document.getElementById('city-list');
         if (!datalist) {
@@ -90,7 +137,21 @@ async function loadCities(province) {
         cityInput.setAttribute('list', 'city-list');
     } catch (error) {
         console.error('Error loading cities:', error);
-        showToast('Gagal memuat data kota', 'error');
+        const cities = getFallbackCities(province);
+        let datalist = document.getElementById('city-list');
+        if (!datalist) {
+            datalist = document.createElement('datalist');
+            datalist.id = 'city-list';
+            document.body.appendChild(datalist);
+        }
+        datalist.innerHTML = '';
+        cities.forEach(city => {
+            const option = document.createElement('option');
+            option.value = city;
+            datalist.appendChild(option);
+        });
+        cityInput.setAttribute('list', 'city-list');
+        showToast('Menggunakan daftar kota cadangan', 'warning');
     }
 }
 
@@ -105,21 +166,31 @@ async function loadShippingCosts(province, city) {
     
     try {
         const response = await fetch(`${API_BASE}/api/shipping-costs?province=${encodeURIComponent(province)}&city=${encodeURIComponent(city)}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
         const costs = await response.json();
-        
         if (Array.isArray(costs) && costs.length > 0) {
             shippingCosts = costs[0];
             renderShippingOptions();
             updateTotals();
+            return;
+        }
+
+        throw new Error('No shipping costs returned');
+    } catch (error) {
+        console.error('Error loading shipping costs:', error);
+        const fallback = getFallbackShippingCosts(province, city);
+        if (fallback.length > 0) {
+            shippingCosts = fallback[0];
+            renderShippingOptions();
+            updateTotals();
+            showToast('Menggunakan ongkos kirim cadangan', 'warning');
         } else {
             shippingCosts = {};
             renderShippingOptions();
             updateTotals();
             showToast('Ongkos kirim belum tersedia untuk kota/provinsi ini', 'error');
         }
-    } catch (error) {
-        console.error('Error loading shipping costs:', error);
-        showToast('Gagal memuat biaya pengiriman', 'error');
     }
 }
 
